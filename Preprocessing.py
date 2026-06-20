@@ -2,6 +2,27 @@ import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
 
+charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
+indexToChar = {0:"[PAD]", 1:"[SOS]", 2:"[EOS]"}
+decode = {".":"", "sp":" ", "ga":".", "km":",", "pt":"'", "sc":";"}
+with open("Dataset/letters", "r") as f:
+    for i, line in enumerate(f):
+        char = line.strip() if len(line) <= 2 else decode[line.strip()]
+        charToIndex[char] = i + 3
+        indexToChar[i+3] = char
+
+VOCABSIZE = len(charToIndex)
+
+def encodeLine(line):
+    """
+    takes a str (line) and returns an array of numbers that corresponds to the given string with added SOS and EOS tokens
+    """
+    out = [1]
+    for i in line:
+        out.append(charToIndex[i])
+    out.append(2)
+    return out
+
 def extractStrokeSequence(path):
     """
     Takes a path (str) and returns a list of tuples corresponding to the points in that line
@@ -28,7 +49,6 @@ def createLabelsDict():
     Returns a dict (str,str) of all lines in the labels file with line number as the key and matching text as the value. 
     """
     labels = {}
-    decode = {".":"", "sp":" ", "ga":".", "km":",", "pt":"'", "sc":";"}
     with open("Dataset/labels.mlf", "r") as f:
         key = ""
         value = ""
@@ -46,7 +66,7 @@ def createLabelsDict():
         labels[key] = value
     return labels
 
-
+labels = createLabelsDict()
 
 def visualizeStrokes(line, label=None):
     """
@@ -78,7 +98,6 @@ def createDataset(split):
     """
     directories = []
     dataset = []
-    labels = createLabelsDict()
     mainpath = "Dataset/Strokes/lineStrokes/"
     with open(split, "r") as f:
         for line in f:
@@ -92,7 +111,7 @@ def createDataset(split):
             try:
                 fullpathnum = pathnum+letter+"-"+(str(i) if i>=10 else ("0"+str(i)))
             #    print(path + fullpathnum + ".xml")
-                dataset.append((extractStrokeSequence(path + fullpathnum + ".xml"), labels[fullpathnum]))                    
+                dataset.append((extractStrokeSequence(path + fullpathnum + ".xml"), encodeLine(labels[fullpathnum])))                    
                 i+=1
             except FileNotFoundError:
                 break
@@ -119,7 +138,7 @@ def computeDatasetMeanSTD(dataset, normalize=False, normalizeParams=None):
                            point[2])
     return normalizeParams
 
-#visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
+# #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
 datasetTrain = createDataset("Dataset/trainset.txt")
 datasetVal = createDataset("Dataset/testset_v.txt")
 datasetTest = createDataset("Dataset/testset_t.txt")
@@ -127,7 +146,10 @@ datasetTest = createDataset("Dataset/testset_t.txt")
 datasetNorms = computeDatasetMeanSTD(datasetTrain, normalize=True)
 computeDatasetMeanSTD(datasetVal, normalize=True, normalizeParams=datasetNorms)
 computeDatasetMeanSTD(datasetTest, normalize=True, normalizeParams=datasetNorms)
-print(datasetNorms)
-# print(len(datasetT))
-# for i, j in dataset:
-#     print(j)
+# print(datasetNorms)
+# # print(len(datasetT))
+# # for i, j in dataset:
+# #     print(j)
+
+# print(charToIndex)
+# print(indexToChar)
