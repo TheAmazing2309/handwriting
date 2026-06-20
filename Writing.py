@@ -1,5 +1,6 @@
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
+import numpy as np
 
 def extractStrokeSequence(path):
     """
@@ -97,15 +98,36 @@ def createDataset(split):
                 break
     return dataset
 
-path = "Dataset/Strokes/lineStrokes/a02/a02-000/a02-000-00.xml"
-pathName = "a02-000-00"
-#print(extractStrokeSequence(path))
-#print(createLabelsDict())
+def computeDatasetMeanSTD(dataset, normalize=False, normalizeParams=None):
+    """
+    returns a tuple of the (meanX, meanY, stdX, stdY) of the given dataset
+    if normalize = True, then also normalizes the dataset
+    """
+    x = []
+    y = []
+    if normalizeParams == None:
+        for line, label in dataset:
+            for point in line:
+                x.append(point[0])
+                y.append(point[1])
+        normalizeParams = np.mean(x), np.mean(y), np.std(x), np.std(y)
+    if normalize:
+        for line, label in dataset:
+            for i, point in enumerate(line):
+                line[i] = ((point[0] - normalizeParams[0]) / normalizeParams[2],
+                           (point[1] - normalizeParams[1]) / normalizeParams[3],
+                           point[2])
+    return normalizeParams
 
 #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
-datasetT = createDataset("Dataset/testset_f.txt")
-datasetV = createDataset("Dataset/testset_v.txt")
-datasetF = createDataset("Dataset/testset_t.txt")
+datasetTrain = createDataset("Dataset/trainset.txt")
+datasetVal = createDataset("Dataset/testset_v.txt")
+datasetTest = createDataset("Dataset/testset_t.txt")
+
+datasetNorms = computeDatasetMeanSTD(datasetTrain, normalize=True)
+computeDatasetMeanSTD(datasetVal, normalize=True, normalizeParams=datasetNorms)
+computeDatasetMeanSTD(datasetTest, normalize=True, normalizeParams=datasetNorms)
+print(datasetNorms)
 # print(len(datasetT))
 # for i, j in dataset:
 #     print(j)
