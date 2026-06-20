@@ -1,10 +1,6 @@
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 
-path = "Dataset/Strokes/lineStrokes/a02/a02-000/a02-000-00.xml"
-pathName = "a02-000-00"
-labels = {}
-
 def extractStrokeSequence(path):
     """
     Takes a path (str) and returns a list of tuples corresponding to the points in that line
@@ -49,6 +45,8 @@ def createLabelsDict():
         labels[key] = value
     return labels
 
+
+
 def visualizeStrokes(line, label=None):
     """
     line is a list of 3-long tuples containing the point data for the strokes that make up a line,
@@ -72,7 +70,42 @@ def visualizeStrokes(line, label=None):
     plt.gca().set_aspect('equal')
     plt.show()
 
+def createDataset(split):
+    """
+    split is a path to one of the three splits: training, validation, or testing
+    returns a list if tuples (line strokes, label), line strokes are a list of tuples themselves
+    """
+    directories = []
+    dataset = []
+    labels = createLabelsDict()
+    mainpath = "Dataset/Strokes/lineStrokes/"
+    with open(split, "r") as f:
+        for line in f:
+            directories.append(line.strip())
+    for folder in directories:
+        pathnum = folder if len(folder) == 7 else folder[:-1]
+        path = mainpath + folder.split("-")[0] + "/" + pathnum + "/"
+        letter = "" if len(folder) == 7 else folder[-1]
+        i = 1
+        while True:
+            try:
+                fullpathnum = pathnum+letter+"-"+(str(i) if i>=10 else ("0"+str(i)))
+            #    print(path + fullpathnum + ".xml")
+                dataset.append((extractStrokeSequence(path + fullpathnum + ".xml"), labels[fullpathnum]))                    
+                i+=1
+            except FileNotFoundError:
+                break
+    return dataset
+
+path = "Dataset/Strokes/lineStrokes/a02/a02-000/a02-000-00.xml"
+pathName = "a02-000-00"
 #print(extractStrokeSequence(path))
 #print(createLabelsDict())
 
-visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
+#visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
+datasetT = createDataset("Dataset/testset_f.txt")
+datasetV = createDataset("Dataset/testset_v.txt")
+datasetF = createDataset("Dataset/testset_t.txt")
+# print(len(datasetT))
+# for i, j in dataset:
+#     print(j)
