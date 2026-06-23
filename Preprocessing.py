@@ -4,6 +4,9 @@ import numpy as np
 import tensorflow as tf
 
 MAX_STROKE_LEN = float('inf')
+MAX_POINT_SEQ_LEN = 1940
+MAX_TEXT_SEQ_LEN = 71
+BATCH_SIZE = 32
 
 charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
 indexToChar = {0:"[PAD]", 1:"[SOS]", 2:"[EOS]"}
@@ -15,6 +18,8 @@ with open("Dataset/letters", "r") as f:
         indexToChar[i+3] = char
 
 VOCABSIZE = len(charToIndex)
+POINT_PAD_TOKEN = (999,999,999)
+TEXT_PAD_TOKEN = 0
 
 def encodeLine(line):
     """
@@ -99,10 +104,11 @@ def visualizeStrokes(line, label=None):
 def createDataset(split):
     """
     split is a path to one of the three splits: training, validation, or testing
-    returns a list if tuples (line strokes, label), line strokes are a list of tuples themselves
+    returns a tuple of lists (line strokes, label), line strokes are a list of tuples themselves
     """
     directories = []
-    dataset = []
+    datasetPoints = []
+    datasetText = []
     mainpath = "Dataset/Strokes/lineStrokes/"
     with open(split, "r") as f:
         for line in f:
@@ -118,27 +124,28 @@ def createDataset(split):
             #    print(path + fullpathnum + ".xml")
                 strokes = extractStrokeSequence(path + fullpathnum + ".xml")
                 if len(strokes) <= MAX_STROKE_LEN:
-                    dataset.append((strokes, encodeLine(labels[fullpathnum])))                    
+                    datasetPoints.append(strokes)    
+                    datasetText.append(encodeLine(labels[fullpathnum]))               
                 i+=1
             except FileNotFoundError:
                 break
-    return dataset
+    return datasetPoints, datasetText
 
-def computeDatasetMeanSTD(dataset, normalize=False, normalizeParams=None):
+def computeDatasetMeanSTD(datasetPoints, normalize=False, normalizeParams=None):
     """
-    returns a tuple of the (meanX, meanY, stdX, stdY) of the given dataset
+    returns a tuple of the (meanX, meanY, stdX, stdY) of the given dataset POINTS LIST ONLY
     if normalize = True, then also normalizes the dataset
     """
     x = []
     y = []
     if normalizeParams == None:
-        for line, label in dataset:
+        for line in datasetPoints:
             for point in line:
                 x.append(point[0])
                 y.append(point[1])
         normalizeParams = np.mean(x), np.mean(y), np.std(x), np.std(y)
     if normalize:
-        for line, label in dataset:
+        for line in datasetPoints:
             for i, point in enumerate(line):
                 line[i] = ((point[0] - normalizeParams[0]) / normalizeParams[2],
                            (point[1] - normalizeParams[1]) / normalizeParams[3],
@@ -159,33 +166,34 @@ def toTFDataset(dataset):
     return tf.data.Dataset.from_generator(
         lambda: generator(dataset),
         output_signature=(
-            tf.TensorSpec(shape=(None, 3), dtype=tf.float32),
-            tf.TensorSpec(shape=(None,), dtype=tf.int32)
+            tf.TensorSpec(shape=(MAX_POINT_SEQ_LEN, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(MAX_TEXT_SEQ_LEN,), dtype=tf.int32)
         )
-    )
+    ).batch(BATCH_SIZE)
 
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
-datasetTrain = createDataset("Dataset/trainset.txt")
-datasetTrain.extend(createDataset("Dataset/testset_f.txt"))
-datasetVal = createDataset("Dataset/testset_v.txt")
-datasetTest = createDataset("Dataset/testset_t.txt")
+datasetTrainPoints, datasetTrainText = createDataset("Dataset/trainset.txt")
+datasetTrainPointsExtra, datasetTrainTextExtra = createDataset("Dataset/testset_f.txt")
+datasetTrainPoints.extend(datasetTrainPointsExtra)
+datasetTrainText.extend(datasetTrainTextExtra)
+datasetValPoints, datasetValText = createDataset("Dataset/testset_v.txt")
+datasetTestPoints, datasetTestText = createDataset("Dataset/testset_t.txt")
 
-datasetNorms = computeDatasetMeanSTD(datasetTrain, normalize=True)
-computeDatasetMeanSTD(datasetVal, normalize=True, normalizeParams=datasetNorms)
-computeDatasetMeanSTD(datasetTest, normalize=True, normalizeParams=datasetNorms)
+datasetNorms = computeDatasetMeanSTD(datasetTrainPoints, normalize=True)
+computeDatasetMeanSTD(datasetValPoints, normalize=True, normalizeParams=datasetNorms)
+computeDatasetMeanSTD(datasetTestPoints, normalize=True, normalizeParams=datasetNorms)
 
-tData = toTFDataset(datasetTrain)
-vData = toTFDataset(datasetVal)
-fData = toTFDataset(datasetTest)
+datasetTrainPoints = tf.keras.utils.pad_sequences(datasetTrainPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+datasetValPoints = tf.keras.utils.pad_sequences(datasetValPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+datasetTestPoints = tf.keras.utils.pad_sequences(datasetTestPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+datasetTrainText = tf.keras.utils.pad_sequences(datasetTrainText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+datasetValText = tf.keras.utils.pad_sequences(datasetValText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+datasetTestText = tf.keras.utils.pad_sequences(datasetTestText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
 
+tData = toTFDataset(list(zip(datasetTrainPoints, datasetTrainText)))
+vData = toTFDataset(list(zip(datasetValPoints, datasetValText)))
+fData = toTFDataset(list(zip(datasetTestPoints, datasetTestText)))
 
-# print(datasetNorms)
-# # print(len(datasetT))
-# # for i, j in dataset:
-# #     print(j)
-
-# print(charToIndex)
-# print(indexToChar)
 
 if __name__ == "__main__":
     # for feature, label in tData.take(1):
@@ -199,15 +207,15 @@ if __name__ == "__main__":
     #     av+=feature.shape[0]
     #     print(feature.shape[0])
 
-    #lenFeatures = [len(f) for f, l in tData]
-    print("_", len([len(f) for f, l in tData]))
-    print("v", len([len(f) for f, l in vData]))
-    print("f0", len([len(f) for f, l in fData]))
-    
-    # print("Total examples: ", len(lenFeatures))
-    # print("Average length of point sequence: ", sum(lenFeatures)/len(lenFeatures))
-    # print("50 percentile: ", np.percentile(lenFeatures, 50))
-    # print("75 percentile: ", np.percentile(lenFeatures, 75))
-    # print("90 percentile: ", np.percentile(lenFeatures, 90))
-    # print("95 percentile: ", np.percentile(lenFeatures, 95))
-    # print("Max value: ", max(lenFeatures))
+    lenFeatures = [len(f) for f, l in tData]
+    print("_", len([len(f) for f, l in tData]), "max", max([len(f) for f, l in tData]), "maxTextLen", max([len(l) for f, l in tData]))
+    print("v", len([len(f) for f, l in vData]), "max", max([len(f) for f, l in vData]), "maxTextLen", max([len(l) for f, l in vData]))
+    print("f0", len([len(f) for f, l in fData]), "max", max([len(f) for f, l in fData]), "maxTextLen", max([len(l) for f, l in fData]))
+
+    print("Total examples: ", len(lenFeatures))
+    print("Average length of point sequence: ", sum(lenFeatures)/len(lenFeatures))
+    print("50 percentile: ", np.percentile(lenFeatures, 50))
+    print("75 percentile: ", np.percentile(lenFeatures, 75))
+    print("90 percentile: ", np.percentile(lenFeatures, 90))
+    print("95 percentile: ", np.percentile(lenFeatures, 95))
+    print("Max value: ", max(lenFeatures))
