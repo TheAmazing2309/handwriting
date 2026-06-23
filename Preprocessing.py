@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 
-MAX_STROKE_LEN = 300
+MAX_STROKE_LEN = float('inf')
 
 charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
 indexToChar = {0:"[PAD]", 1:"[SOS]", 2:"[EOS]"}
@@ -166,6 +166,7 @@ def toTFDataset(dataset):
 
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
 datasetTrain = createDataset("Dataset/trainset.txt")
+datasetTrain.extend(createDataset("Dataset/testset_f.txt"))
 datasetVal = createDataset("Dataset/testset_v.txt")
 datasetTest = createDataset("Dataset/testset_t.txt")
 
@@ -177,6 +178,7 @@ tData = toTFDataset(datasetTrain)
 vData = toTFDataset(datasetVal)
 fData = toTFDataset(datasetTest)
 
+
 # print(datasetNorms)
 # # print(len(datasetT))
 # # for i, j in dataset:
@@ -186,7 +188,26 @@ fData = toTFDataset(datasetTest)
 # print(indexToChar)
 
 if __name__ == "__main__":
-    for feature, label in tData.take(1):
-        print("Feature: ", feature)
-        print("Label: ", label)
+    # for feature, label in tData.take(1):
+    #     print("Feature: ", feature)
+    #     print("Label: ", label)
     
+    # i = 0
+    # av = 0
+    # for feature, label in tData:
+    #     i+=1
+    #     av+=feature.shape[0]
+    #     print(feature.shape[0])
+
+    #lenFeatures = [len(f) for f, l in tData]
+    print("_", len([len(f) for f, l in tData]))
+    print("v", len([len(f) for f, l in vData]))
+    print("f0", len([len(f) for f, l in fData]))
+    
+    # print("Total examples: ", len(lenFeatures))
+    # print("Average length of point sequence: ", sum(lenFeatures)/len(lenFeatures))
+    # print("50 percentile: ", np.percentile(lenFeatures, 50))
+    # print("75 percentile: ", np.percentile(lenFeatures, 75))
+    # print("90 percentile: ", np.percentile(lenFeatures, 90))
+    # print("95 percentile: ", np.percentile(lenFeatures, 95))
+    # print("Max value: ", max(lenFeatures))
