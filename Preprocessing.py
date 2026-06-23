@@ -2,6 +2,8 @@ import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
 
+MAX_STROKE_LEN = 300
+
 charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
 indexToChar = {0:"[PAD]", 1:"[SOS]", 2:"[EOS]"}
 decode = {".":"", "sp":" ", "ga":".", "km":",", "pt":"'", "sc":";"}
@@ -85,6 +87,8 @@ def visualizeStrokes(line, label=None):
             plt.plot(x, y)
             x = [x[-1]]
             y = [y[-1]]
+    if len(x) > 1:
+        plt.plot(x, y)
     if label != None:
         plt.title(label)
     plt.gca().invert_yaxis()
@@ -111,7 +115,9 @@ def createDataset(split):
             try:
                 fullpathnum = pathnum+letter+"-"+(str(i) if i>=10 else ("0"+str(i)))
             #    print(path + fullpathnum + ".xml")
-                dataset.append((extractStrokeSequence(path + fullpathnum + ".xml"), encodeLine(labels[fullpathnum])))                    
+                strokes = extractStrokeSequence(path + fullpathnum + ".xml")
+                if len(strokes) <= MAX_STROKE_LEN:
+                    dataset.append((strokes, encodeLine(labels[fullpathnum])))                    
                 i+=1
             except FileNotFoundError:
                 break
