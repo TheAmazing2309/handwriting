@@ -1,6 +1,7 @@
 import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 
 MAX_STROKE_LEN = 300
 
@@ -144,6 +145,25 @@ def computeDatasetMeanSTD(dataset, normalize=False, normalizeParams=None):
                            point[2])
     return normalizeParams
 
+def generator(dataset):
+    """
+    Generator function to be used by tf to convert python list-based data into a tf.data.Dataset
+    """
+    for feature, label in dataset:
+        yield feature, label
+
+def toTFDataset(dataset):
+    """
+    Wrapper to convert python list-based dataset to a tf.data.Dataset, uses generator
+    """
+    return tf.data.Dataset.from_generator(
+        lambda: generator(dataset),
+        output_signature=(
+            tf.TensorSpec(shape=(None, 3), dtype=tf.float32),
+            tf.TensorSpec(shape=(None,), dtype=tf.int32)
+        )
+    )
+
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
 datasetTrain = createDataset("Dataset/trainset.txt")
 datasetVal = createDataset("Dataset/testset_v.txt")
@@ -152,6 +172,11 @@ datasetTest = createDataset("Dataset/testset_t.txt")
 datasetNorms = computeDatasetMeanSTD(datasetTrain, normalize=True)
 computeDatasetMeanSTD(datasetVal, normalize=True, normalizeParams=datasetNorms)
 computeDatasetMeanSTD(datasetTest, normalize=True, normalizeParams=datasetNorms)
+
+tData = toTFDataset(datasetTrain)
+vData = toTFDataset(datasetVal)
+fData = toTFDataset(datasetTest)
+
 # print(datasetNorms)
 # # print(len(datasetT))
 # # for i, j in dataset:
@@ -159,3 +184,9 @@ computeDatasetMeanSTD(datasetTest, normalize=True, normalizeParams=datasetNorms)
 
 # print(charToIndex)
 # print(indexToChar)
+
+if __name__ == "__main__":
+    for feature, label in tData.take(1):
+        print("Feature: ", feature)
+        print("Label: ", label)
+    
