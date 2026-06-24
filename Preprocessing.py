@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
+import os
 
 MAX_STROKE_LEN = float('inf')
 MAX_POINT_SEQ_LEN = 1940
@@ -176,12 +177,27 @@ def toTFDataset(dataset):
     ).batch(BATCH_SIZE)
 
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
-datasetTrainPoints, datasetTrainText = createDataset("Dataset/trainset.txt")
-datasetTrainPointsExtra, datasetTrainTextExtra = createDataset("Dataset/testset_f.txt")
-datasetTrainPoints.extend(datasetTrainPointsExtra)
-datasetTrainText.extend(datasetTrainTextExtra)
-datasetValPoints, datasetValText = createDataset("Dataset/testset_v.txt")
-datasetTestPoints, datasetTestText = createDataset("Dataset/testset_t.txt")
+if not os.path.exists("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy"):
+    datasetTrainPoints, datasetTrainText = createDataset("Dataset/trainset.txt")
+    datasetTrainPointsExtra, datasetTrainTextExtra = createDataset("Dataset/testset_f.txt")
+    datasetTrainPoints.extend(datasetTrainPointsExtra)
+    datasetTrainText.extend(datasetTrainTextExtra)
+    datasetValPoints, datasetValText = createDataset("Dataset/testset_v.txt")
+    datasetTestPoints, datasetTestText = createDataset("Dataset/testset_t.txt")
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy", datasetTrainPoints)
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetTrainText.npy", datasetTrainText)
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetValPoints.npy", datasetValPoints)
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetValText.npy", datasetValText)
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetTestPoints.npy", datasetTestPoints)
+    np.save("/content/drive/MyDrive/handwriting/processed/datasetTestText.npy", datasetTestText)
+
+else:
+    datasetTrainPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy")
+    datasetTrainText = np.load("/content/drive/MyDrive/handwriting/processed/datasetTrainText.npy")
+    datasetValPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetValPoints.npy")
+    datasetValText = np.load("/content/drive/MyDrive/handwriting/processed/datasetValText.npy")
+    datasetTestPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetTestPoints.npy")
+    datasetTestText = np.load("/content/drive/MyDrive/handwriting/processed/datasetTestText.npy")
 
 datasetNorms = computeDatasetMeanSTD(datasetTrainPoints, normalize=True)
 computeDatasetMeanSTD(datasetValPoints, normalize=True, normalizeParams=datasetNorms)
