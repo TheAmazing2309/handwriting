@@ -75,6 +75,7 @@ if __name__ == "__main__":
     # for point, text in tData.take(1):
     #     model = HandwritingSynthesisModel()
     #     model((point, text))
+    print(tf.config.list_physical_devices('GPU'))
 
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
     model = HandwritingSynthesisModel()
@@ -91,4 +92,4 @@ if __name__ == "__main__":
             optimizer.apply_gradients(zip(clipped_gradients, model.trainable_variables))
             print(f"Epoch {epoch}, Batch {i}, Loss: {lossNum.numpy()}")
             if i%5 == 0:
-                model.save_weights(f'Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
+                model.save_weights(f'/content/drive/MyDrive/handwriting/Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
