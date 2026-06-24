@@ -5,6 +5,7 @@ import tensorflow as tf
 
 MAX_STROKE_LEN = float('inf')
 MAX_POINT_SEQ_LEN = 1940
+#MAX_POINT_SEQ_LEN = 5
 MAX_TEXT_SEQ_LEN = 71
 BATCH_SIZE = 32
 
