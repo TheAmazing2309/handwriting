@@ -114,6 +114,7 @@ def createDataset(split):
     with open(split, "r") as f:
         for line in f:
             directories.append(line.strip())
+    j = 0
     for folder in directories:
         pathnum = folder if len(folder) == 7 else folder[:-1]
         path = mainpath + folder.split("-")[0] + "/" + pathnum + "/"
@@ -128,6 +129,8 @@ def createDataset(split):
                     datasetPoints.append(strokes)    
                     datasetText.append(encodeLine(labels[fullpathnum]))               
                 i+=1
+                j+=1
+                print("Read xml file ",j,"out of 9000ish")
             except FileNotFoundError:
                 break
     return datasetPoints, datasetText
