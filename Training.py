@@ -87,7 +87,8 @@ if __name__ == "__main__":
                 lossNum = loss(a,b,c,d,e,f,g,points)
             
             gradients = tape.gradient(lossNum, model.trainable_variables)
-            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            clipped_gradients, _ = tf.clip_by_global_norm(gradients, 1.0)
+            optimizer.apply_gradients(zip(clipped_gradients, model.trainable_variables))
             print(f"Epoch {epoch}, Batch {i}, Loss: {lossNum.numpy()}")
             if i%5 == 0:
-                model.save_weights('Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
+                model.save_weights(f'Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
