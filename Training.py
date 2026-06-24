@@ -1,9 +1,12 @@
 from Preprocessing import tData, vData, fData, POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN
+from Loss import loss
 import tensorflow as tf
 
 WINDOW_NUM = 10
 HIDDEN_SIZE = 400
 PREDS_NUM = 20
+
+EPOCHS = 20
 
 class HandwritingSynthesisModel(tf.keras.Model):
     """
@@ -65,10 +68,24 @@ class HandwritingSynthesisModel(tf.keras.Model):
         final = tf.stack(outputs, axis=1)
         final = self.mdn(final)
         pi, mux, muy, sigmax, sigmay, rho, penup = tf.split(final, [20,20,20,20,20,20,1], axis=2)
-        
+
         return tf.nn.softmax(pi), mux, muy, tf.exp(sigmax), tf.exp(sigmay), tf.nn.tanh(rho), tf.nn.sigmoid(penup)
 
 if __name__ == "__main__":
-    for point, text in tData.take(1):
-        model = HandwritingSynthesisModel()
-        model((point, text))
+    # for point, text in tData.take(1):
+    #     model = HandwritingSynthesisModel()
+    #     model((point, text))
+
+    optimizer = tf.keras.optimizers.Adam(learning_rate=1e-5)
+    model = HandwritingSynthesisModel()
+    print("Model Initialized")
+    for epoch in range(EPOCHS):
+        for i, batch in enumerate(tData):
+            with tf.GradientTape() as tape:
+                points, text = batch
+                a,b,c,d,e,f,g = model(batch)
+                lossNum = loss(a,b,c,d,e,f,g,points)
+            
+            gradients = tape.gradient(lossNum, model.trainable_variables)
+            optimizer.apply_gradients(zip(gradients, model.trainable_variables))
+            print(f"Epoch {epoch}, Batch {i}, Loss: {lossNum.numpy()}")
