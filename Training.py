@@ -89,3 +89,5 @@ if __name__ == "__main__":
             gradients = tape.gradient(lossNum, model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, model.trainable_variables))
             print(f"Epoch {epoch}, Batch {i}, Loss: {lossNum.numpy()}")
+            if i%5 == 0:
+                model.save_weights('Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
