@@ -4,3 +4,4 @@ Processed/
 __pycache__/
 *.pyc
 *.pth
+*.npy
