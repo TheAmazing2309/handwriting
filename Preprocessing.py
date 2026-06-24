@@ -9,6 +9,8 @@ MAX_POINT_SEQ_LEN = 1940
 #MAX_POINT_SEQ_LEN = 5
 MAX_TEXT_SEQ_LEN = 71
 BATCH_SIZE = 32
+ON_COLAB = os.path.exists('/content')
+SAVE_PATH = '/content/drive/MyDrive/handwriting/Processed/' if ON_COLAB else 'Processed/'
 
 charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
 indexToChar = {0:"[PAD]", 1:"[SOS]", 2:"[EOS]"}
@@ -177,38 +179,41 @@ def toTFDataset(dataset):
     ).batch(BATCH_SIZE)
 
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
-if not os.path.exists("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy"):
+if not os.path.exists(SAVE_PATH+"datasetTrainPoints.npy"):
+    print("LOADING DATASETS FROM XML!")
     datasetTrainPoints, datasetTrainText = createDataset("Dataset/trainset.txt")
     datasetTrainPointsExtra, datasetTrainTextExtra = createDataset("Dataset/testset_f.txt")
     datasetTrainPoints.extend(datasetTrainPointsExtra)
     datasetTrainText.extend(datasetTrainTextExtra)
     datasetValPoints, datasetValText = createDataset("Dataset/testset_v.txt")
     datasetTestPoints, datasetTestText = createDataset("Dataset/testset_t.txt")
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy", datasetTrainPoints)
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetTrainText.npy", datasetTrainText)
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetValPoints.npy", datasetValPoints)
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetValText.npy", datasetValText)
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetTestPoints.npy", datasetTestPoints)
-    np.save("/content/drive/MyDrive/handwriting/processed/datasetTestText.npy", datasetTestText)
 
+    datasetNorms = computeDatasetMeanSTD(datasetTrainPoints, normalize=True)
+    computeDatasetMeanSTD(datasetValPoints, normalize=True, normalizeParams=datasetNorms)
+    computeDatasetMeanSTD(datasetTestPoints, normalize=True, normalizeParams=datasetNorms)
+
+    datasetTrainPoints = tf.keras.utils.pad_sequences(datasetTrainPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+    datasetValPoints = tf.keras.utils.pad_sequences(datasetValPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+    datasetTestPoints = tf.keras.utils.pad_sequences(datasetTestPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
+    datasetTrainText = tf.keras.utils.pad_sequences(datasetTrainText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+    datasetValText = tf.keras.utils.pad_sequences(datasetValText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+    datasetTestText = tf.keras.utils.pad_sequences(datasetTestText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+
+    np.save(SAVE_PATH+"datasetTrainPoints.npy", datasetTrainPoints)
+    np.save(SAVE_PATH+"datasetTrainText.npy", datasetTrainText)
+    np.save(SAVE_PATH+"datasetValPoints.npy", datasetValPoints)
+    np.save(SAVE_PATH+"datasetValText.npy", datasetValText)
+    np.save(SAVE_PATH+"datasetTestPoints.npy", datasetTestPoints)
+    np.save(SAVE_PATH+"datasetTestText.npy", datasetTestText)
+    
 else:
-    datasetTrainPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetTrainPoints.npy")
-    datasetTrainText = np.load("/content/drive/MyDrive/handwriting/processed/datasetTrainText.npy")
-    datasetValPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetValPoints.npy")
-    datasetValText = np.load("/content/drive/MyDrive/handwriting/processed/datasetValText.npy")
-    datasetTestPoints = np.load("/content/drive/MyDrive/handwriting/processed/datasetTestPoints.npy")
-    datasetTestText = np.load("/content/drive/MyDrive/handwriting/processed/datasetTestText.npy")
-
-datasetNorms = computeDatasetMeanSTD(datasetTrainPoints, normalize=True)
-computeDatasetMeanSTD(datasetValPoints, normalize=True, normalizeParams=datasetNorms)
-computeDatasetMeanSTD(datasetTestPoints, normalize=True, normalizeParams=datasetNorms)
-
-datasetTrainPoints = tf.keras.utils.pad_sequences(datasetTrainPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
-datasetValPoints = tf.keras.utils.pad_sequences(datasetValPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
-datasetTestPoints = tf.keras.utils.pad_sequences(datasetTestPoints, maxlen=MAX_POINT_SEQ_LEN, padding='post', value=POINT_PAD_TOKEN)
-datasetTrainText = tf.keras.utils.pad_sequences(datasetTrainText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
-datasetValText = tf.keras.utils.pad_sequences(datasetValText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
-datasetTestText = tf.keras.utils.pad_sequences(datasetTestText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
+    print("LOADING DATASETS FROM NPY!")
+    datasetTrainPoints = np.load(SAVE_PATH+"datasetTrainPoints.npy")
+    datasetTrainText = np.load(SAVE_PATH+"/datasetTrainText.npy")
+    datasetValPoints = np.load(SAVE_PATH+"datasetValPoints.npy")
+    datasetValText = np.load(SAVE_PATH+"datasetValText.npy")
+    datasetTestPoints = np.load(SAVE_PATH+"datasetTestPoints.npy")
+    datasetTestText = np.load(SAVE_PATH+"datasetTestText.npy")
 
 tData = toTFDataset(list(zip(datasetTrainPoints, datasetTrainText)))
 vData = toTFDataset(list(zip(datasetValPoints, datasetValText)))
