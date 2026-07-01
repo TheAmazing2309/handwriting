@@ -1,4 +1,4 @@
-from Preprocessing import tData, vData, fData, POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN
+from Preprocessing import tData, vData, fData, datasetNorms, POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN, visualizeSample
 from Loss import loss
 import tensorflow as tf
 
@@ -34,6 +34,8 @@ class HandwritingSynthesisModel(tf.keras.Model):
         
         # print("Points input", tf.shape(pointsInput))
         # print("Text input", tf.shape(textInput))
+        tf.print("Points mask:", pointsInput._keras_mask[0])
+        tf.print("Text mask:", textInput._keras_mask[0])
 
         w0 = tf.zeros((batchSize, VOCABSIZE))
         states00 = [tf.zeros((batchSize, HIDDEN_SIZE)), tf.zeros((batchSize, HIDDEN_SIZE))]
@@ -46,8 +48,8 @@ class HandwritingSynthesisModel(tf.keras.Model):
         # print("w0", tf.shape(w0))
         # print("states00[0]", tf.shape(states00[0]))
 
-        for timestep in range(MAX_POINT_SEQ_LEN):
-         #   print(timestep)
+        for timestep in range(tf.shape(pointsInput)[1].numpy()):
+            print(timestep)
             point = pointsInput[:, timestep, :] #shape(batch, 3)
          #   expandedWindow = tf.expand_dims(w0, 1) #shape(batch, 1, VOCABSIZE)
             pointWindow = tf.concat([point, w0], 1) #shape(batch,VOCABSIZE+3)
@@ -84,9 +86,15 @@ if __name__ == "__main__":
         for i, batch in enumerate(tData):
             with tf.GradientTape() as tape:
                 points, text = batch
+                print(points.shape, text.shape)
                 a,b,c,d,e,f,g = model(batch)
                 lossNum = loss(a,b,c,d,e,f,g,points)
             
+       #     visualizeHeatmap(a[0,0,:],b[0,0,:],c[0,0,:],d[0,0,:],e[0,0,:],f[0,0,:],show=False,name=f"epoch{epoch}batch{i}")
+
+            for t in range(MAX_POINT_SEQ_LEN):
+                visualizeSample(points[0], text[0], a, b, c, d, e, f, timestep=t, norms=datasetNorms)
+
             gradients = tape.gradient(lossNum, model.trainable_variables)
             clipped_gradients, _ = tf.clip_by_global_norm(gradients, 1.0)
             optimizer.apply_gradients(zip(clipped_gradients, model.trainable_variables))

@@ -1,6 +1,7 @@
 Dataset/
 Checkpoints/
 Processed/
+Graphs/
 __pycache__/
 *.pyc
 *.pth
