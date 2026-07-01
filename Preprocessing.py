@@ -4,15 +4,17 @@ import numpy as np
 import tensorflow as tf
 import os, time
 
-#MAX_STROKE_LEN = float('inf')
-MAX_STROKE_LEN = 300
+MAX_STROKE_LEN = float('inf')
+#MAX_STROKE_LEN = 300
 MAX_POINT_SEQ_LEN = 1940
 #MAX_POINT_SEQ_LEN = 5
 MAX_TEXT_SEQ_LEN = 71
-BATCH_SIZE = 1
+BATCH_SIZE = 8
 ON_COLAB = os.path.exists('/content')
 SAVE_PATH = '/content/drive/MyDrive/handwriting/Processed/' if ON_COLAB else 'Processed/'
-USE_SAVED_NP_DATA = False
+CHECKPOINT_PATH = '/content/drive/MyDrive/handwriting/Checkpoints/' if ON_COLAB else 'Checkpoints/'
+GRAPH_PATH = '/content/drive/MyDrive/handwriting/Graphs/' if ON_COLAB else 'Graphs'
+USE_SAVED_NP_DATA = True
 SAVE_NEW_DATA_TO_NP = False
 
 charToIndex = {"[PAD]":0, "[SOS]":1, "[EOS]":2}
@@ -100,6 +102,7 @@ def visualizeStrokes(line, label=None, plott=None, norms=None):
     x = [0]
     y = [0]
     line = np.array(line, dtype=np.float32)
+    label = decodeLine(label.numpy()) if label is not None and type(label) is not str else label
     if norms is not None:
         mean_x, mean_y, std_x, std_y = norms
         pad_mask = np.all(line == 999., axis=-1)
@@ -136,31 +139,6 @@ def visualizeStrokes(line, label=None, plott=None, norms=None):
             plott.set_title(label)
             plott.invert_yaxis()
     
-
-# def visualizeHeatmap(pi, mux, muy, sigmax, sigmay, rho, show=False, name=None):
-#     mux = tf.reshape(mux, (20,1,1))
-#     muy = tf.reshape(muy, (20,1,1))
-#     sigmax = tf.reshape(sigmax, (20,1,1))
-#     sigmay = tf.reshape(sigmay, (20,1,1))
-#     rho = tf.reshape(rho, (20,1,1))
-#     pi = tf.reshape(pi, (20,1,1))
-#     x = np.linspace(-3, 3, 100) 
-#     y = np.linspace(-3, 3, 100)
-#     epsilon = 1e-6
-#     X, Y = np.meshgrid(x, y)
-#     X = tf.cast(tf.reshape(X, (1, 100, 100)), dtype=tf.float32)
-#     Y = tf.cast(tf.reshape(Y, (1, 100, 100)), dtype=tf.float32)
-#     Z = ((((X-mux)/sigmax)**2)+(((Y-muy)/sigmay)**2))-(2*rho*(X-mux)*(Y-muy)/(sigmax*sigmay))
-#     N = tf.exp(-Z/(2*(1-rho**2+epsilon))) / (2*3.14159*sigmax*sigmay*(1-rho**2+epsilon)**0.5)
-#     plt.contourf(x, y, tf.reduce_sum(N*pi, axis=0))
-#     plt.colorbar()
-#     if show: plt.show()
-#     else:
-#         plt.savefig("Graphs/"+
-#                     str(time.time()) if name == None else str(name)
-#                     +".png")
-#         plt.close()
-
 def visualizeSample(points, text, pi, mux, muy, sigmax, sigmay, rho, timestep=0, norms=None):
     """
     points, text: single sample (not batched)
@@ -220,7 +198,6 @@ def visualizeSample(points, text, pi, mux, muy, sigmax, sigmay, rho, timestep=0,
 
     plt.tight_layout()
     plt.show()
-
 
 def createDataset(split):
     """
@@ -295,8 +272,26 @@ def toTFDataset(dataset):
         )
     ).batch(BATCH_SIZE)
 
+def samplePoint(pi, mux, muy, sigmax, sigmay, rho, penup, timestep=0, sample=0):
+    pinp = pi.numpy()[sample, timestep, :] #if timestep is not None else pi.numpy()[sample, :, :]
+    gaussian = np.random.choice(20, p=pinp)
+
+    muxnp = mux.numpy()[sample, timestep, gaussian]# if timestep is not None else mux.numpy()[sample, :, :]
+    muynp = muy.numpy()[sample, timestep, gaussian] #if timestep is not None else muy.numpy()[sample, :, :]
+    sigmaxnp = sigmax.numpy()[sample, timestep, gaussian]# if timestep is not None else sigmax.numpy()[sample, :, :]
+    sigmaynp = sigmay.numpy()[sample, timestep, gaussian]# if timestep is not None else sigmay.numpy()[sample, :, :]
+    rhonp = rho.numpy()[sample, timestep, gaussian]# if timestep is not None else rho.numpy()[sample, :, :]
+
+    penupnp = penup.numpy()[sample, timestep, 0]# if timestep is not None else penup.numpy()[sample, :, 0]
+    
+    z1, z2 = np.random.randn(), np.random.randn()
+    dx = muxnp + sigmaxnp * z1
+    dy = muynp + rhonp * sigmaynp * z1 + sigmaynp * np.sqrt(max(1-rhonp**2,1e-6)) * z2
+
+    return (dx, dy, int(np.random.rand() < penupnp))
+
 # #visualizeStrokes(extractStrokeSequence(path), createLabelsDict()[pathName])
-if not os.path.exists(SAVE_PATH+"datasetTrainPoints.npy") or not USE_SAVED_NP_DATA:
+if not os.path.exists(f"{SAVE_PATH}datasetTrainPoints{BATCH_SIZE}.npy") or not USE_SAVED_NP_DATA:
     print("LOADING DATASETS FROM XML!")
     datasetTrainPoints, datasetTrainText = createDataset("Dataset/trainset.txt")
     datasetTrainPointsExtra, datasetTrainTextExtra = createDataset("Dataset/testset_f.txt")
@@ -317,23 +312,23 @@ if not os.path.exists(SAVE_PATH+"datasetTrainPoints.npy") or not USE_SAVED_NP_DA
     datasetTestText = tf.keras.utils.pad_sequences(datasetTestText, maxlen=MAX_TEXT_SEQ_LEN, padding='post', value=TEXT_PAD_TOKEN)
 
     if SAVE_NEW_DATA_TO_NP:
-        np.save(SAVE_PATH+"datasetTrainPoints.npy", datasetTrainPoints)
-        np.save(SAVE_PATH+"datasetTrainText.npy", datasetTrainText)
-        np.save(SAVE_PATH+"datasetValPoints.npy", datasetValPoints)
-        np.save(SAVE_PATH+"datasetValText.npy", datasetValText)
-        np.save(SAVE_PATH+"datasetTestPoints.npy", datasetTestPoints)
-        np.save(SAVE_PATH+"datasetTestText.npy", datasetTestText)
-        np.save(SAVE_PATH+"datasetNorms.npy", datasetNorms)
+        np.save(f"{SAVE_PATH}datasetTrainPoints{BATCH_SIZE}.npy", datasetTrainPoints)
+        np.save(f"{SAVE_PATH}datasetTrainText{BATCH_SIZE}.npy", datasetTrainText)
+        np.save(f"{SAVE_PATH}datasetValPoints{BATCH_SIZE}.npy", datasetValPoints)
+        np.save(f"{SAVE_PATH}datasetValText{BATCH_SIZE}.npy", datasetValText)
+        np.save(f"{SAVE_PATH}datasetTestPoints{BATCH_SIZE}.npy", datasetTestPoints)
+        np.save(f"{SAVE_PATH}datasetTestText{BATCH_SIZE}.npy", datasetTestText)
+        np.save(f"{SAVE_PATH}datasetNorms{BATCH_SIZE}.npy", datasetNorms)
 
 else:
     print("LOADING DATASETS FROM NPY!")
-    datasetTrainPoints = np.load(SAVE_PATH+"datasetTrainPoints.npy")
-    datasetTrainText = np.load(SAVE_PATH+"/datasetTrainText.npy")
-    datasetValPoints = np.load(SAVE_PATH+"datasetValPoints.npy")
-    datasetValText = np.load(SAVE_PATH+"datasetValText.npy")
-    datasetTestPoints = np.load(SAVE_PATH+"datasetTestPoints.npy")
-    datasetTestText = np.load(SAVE_PATH+"datasetTestText.npy")
-    datasetNorms = tuple(np.load(SAVE_PATH+"datasetNorms.npy"))
+    datasetTrainPoints = np.load(f"{SAVE_PATH}datasetTrainPoints{BATCH_SIZE}.npy")
+    datasetTrainText = np.load(f"{SAVE_PATH}datasetTrainText{BATCH_SIZE}.npy")
+    datasetValPoints = np.load(f"{SAVE_PATH}datasetValPoints{BATCH_SIZE}.npy")
+    datasetValText = np.load(f"{SAVE_PATH}datasetValText{BATCH_SIZE}.npy")
+    datasetTestPoints = np.load(f"{SAVE_PATH}datasetTestPoints{BATCH_SIZE}.npy")
+    datasetTestText = np.load(f"{SAVE_PATH}datasetTestText{BATCH_SIZE}.npy")
+    datasetNorms = tuple(np.load(f"{SAVE_PATH}datasetNorms{BATCH_SIZE}.npy"))
 
 tData = toTFDataset(list(zip(datasetTrainPoints, datasetTrainText)))
 vData = toTFDataset(list(zip(datasetValPoints, datasetValText)))
@@ -365,5 +360,6 @@ if __name__ == "__main__":
     # print("95 percentile: ", np.percentile(lenFeatures, 95))
     # print("Max value: ", max(lenFeatures))
 
-    for f, l in fData.take(1):
-        visualizeStrokes(f[0].numpy(), label=decodeLine(l[0].numpy()), norms=datasetNorms)
+    # for f, l in fData.take(1):
+    #     visualizeStrokes(f[0].numpy(), label=decodeLine(l[0].numpy()), norms=datasetNorms)
+    print("Hello World!")

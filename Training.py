@@ -1,10 +1,16 @@
-from Preprocessing import tData, vData, fData, datasetNorms, POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN, visualizeSample
+from Preprocessing import (tData, vData, fData, datasetNorms, 
+                           POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN, CHECKPOINT_PATH,
+                        BATCH_SIZE, GRAPH_PATH, visualizeSample, samplePoint, visualizeStrokes)
 from Loss import loss
 import tensorflow as tf
+import matplotlib.pyplot as plt
+import numpy as np
+import time
 
 WINDOW_NUM = 10
 HIDDEN_SIZE = 400
 PREDS_NUM = 20
+NUM_BATCHES = sum(1 for _ in tData)
 
 EPOCHS = 20
 
@@ -34,8 +40,8 @@ class HandwritingSynthesisModel(tf.keras.Model):
         
         # print("Points input", tf.shape(pointsInput))
         # print("Text input", tf.shape(textInput))
-        tf.print("Points mask:", pointsInput._keras_mask[0])
-        tf.print("Text mask:", textInput._keras_mask[0])
+        # tf.print("Points mask:", pointsInput._keras_mask[0])
+        # tf.print("Text mask:", textInput._keras_mask[0])
 
         w0 = tf.zeros((batchSize, VOCABSIZE))
         states00 = [tf.zeros((batchSize, HIDDEN_SIZE)), tf.zeros((batchSize, HIDDEN_SIZE))]
@@ -49,7 +55,7 @@ class HandwritingSynthesisModel(tf.keras.Model):
         # print("states00[0]", tf.shape(states00[0]))
 
         for timestep in range(tf.shape(pointsInput)[1].numpy()):
-            print(timestep)
+          #  print(timestep)
             point = pointsInput[:, timestep, :] #shape(batch, 3)
          #   expandedWindow = tf.expand_dims(w0, 1) #shape(batch, 1, VOCABSIZE)
             pointWindow = tf.concat([point, w0], 1) #shape(batch,VOCABSIZE+3)
@@ -71,7 +77,7 @@ class HandwritingSynthesisModel(tf.keras.Model):
         final = self.mdn(final)
         pi, mux, muy, sigmax, sigmay, rho, penup = tf.split(final, [20,20,20,20,20,20,1], axis=2)
 
-        return tf.nn.softmax(pi), mux, muy, tf.exp(sigmax), tf.exp(sigmay), tf.nn.tanh(rho), tf.nn.sigmoid(penup)
+        return tf.nn.softmax(pi), mux, muy, tf.exp(sigmax) + 0.01, tf.exp(sigmay) + 0.01, tf.nn.tanh(rho), tf.nn.sigmoid(penup), pointsInput._keras_mask
 
 if __name__ == "__main__":
     # for point, text in tData.take(1):
@@ -84,20 +90,33 @@ if __name__ == "__main__":
     print("Model Initialized")
     for epoch in range(EPOCHS):
         for i, batch in enumerate(tData):
+            start = time.time()
             with tf.GradientTape() as tape:
                 points, text = batch
-                print(points.shape, text.shape)
-                a,b,c,d,e,f,g = model(batch)
-                lossNum = loss(a,b,c,d,e,f,g,points)
+                #print(points.shape, text.shape)
+                a,b,c,d,e,f,g,mask = model(batch)
+                lossNum = loss(a,b,c,d,e,f,g,points,mask)
             
        #     visualizeHeatmap(a[0,0,:],b[0,0,:],c[0,0,:],d[0,0,:],e[0,0,:],f[0,0,:],show=False,name=f"epoch{epoch}batch{i}")
 
-            for t in range(MAX_POINT_SEQ_LEN):
-                visualizeSample(points[0], text[0], a, b, c, d, e, f, timestep=t, norms=datasetNorms)
+            modelPointPreds = []
+            for j in range(BATCH_SIZE):
+                real_len = int(np.sum(~np.all(points[j].numpy() == 999., axis=-1)))
+                modelPointPreds.append([])
+                for t in range(real_len):
+                    #visualizeSample(points[0], text[0], a, b, c, d, e, f, timestep=t, norms=datasetNorms)
+                    modelPointPreds[j].append(samplePoint(a,b,c,d,e,f,g,timestep=t,sample=j))
+            fig, axes = plt.subplots(2, 4, figsize=(20,8))
+            for k in range(BATCH_SIZE):
+                visualizeStrokes(modelPointPreds[k], label=text[k], norms=datasetNorms, plott=axes[k//4,k%4])
+            plt.tight_layout()
+            plt.savefig(f"{GRAPH_PATH}/epoch{epoch}batch{i}.png")
+            plt.close(fig)
 
             gradients = tape.gradient(lossNum, model.trainable_variables)
             clipped_gradients, _ = tf.clip_by_global_norm(gradients, 1.0)
             optimizer.apply_gradients(zip(clipped_gradients, model.trainable_variables))
-            print(f"Epoch {epoch}, Batch {i}, Loss: {lossNum.numpy()}")
-            if i%5 == 0:
-                model.save_weights(f'/content/drive/MyDrive/handwriting/Checkpoints/epoch_{epoch}batch_{i}.weights.h5')
+            end = time.time()
+            print(f"Epoch: {epoch+1}/{EPOCHS}, Batch: {i+1}/{NUM_BATCHES}, Loss: {lossNum.numpy()}, Time for batch: {round(end-start)}")
+            if i%10 == 0 and i != 0:
+                model.save_weights(f'{CHECKPOINT_PATH}/epoch_{epoch}batch_{i}.weights.h5')
