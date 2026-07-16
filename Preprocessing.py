@@ -2,11 +2,11 @@ import xml.etree.ElementTree as ET
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import os, time
+import os
 
 MAX_STROKE_LEN = float('inf')
 #MAX_STROKE_LEN = 300
-MAX_POINT_SEQ_LEN = 1940
+MAX_POINT_SEQ_LEN = min(1940, MAX_STROKE_LEN)
 #MAX_POINT_SEQ_LEN = 5
 MAX_TEXT_SEQ_LEN = 71
 BATCH_SIZE = 8
@@ -30,7 +30,7 @@ VOCABSIZE = len(charToIndex)
 POINT_PAD_TOKEN = (999,999,999)
 TEXT_PAD_TOKEN = 0
 
-def encodeLine(line):
+def encodeLine(line: str) -> list[int]:
     """
     takes a str (line) and returns an array of numbers that corresponds to the given string with added SOS and EOS tokens
     """
@@ -40,14 +40,17 @@ def encodeLine(line):
     out.append(2)
     return out
 
-def decodeLine(line):
+def decodeLine(line: list[int]) -> str:
+    """
+    converts a line back into a string while removing all PAD, SOS, and EOS tokens
+    """
     out = ""
     line = line[1:-1]
     for i in line:
         out += indexToChar[i] if i >2 else ""
     return out
 
-def extractStrokeSequence(path):
+def extractStrokeSequence(path: str) -> list[tuple[int, int, int]]:
     """
     Takes a path (str) and returns a list of tuples corresponding to the points in that line
     (dx, dy, penup) -> dx, dy are relative differences from the previous point, penup is 1 if the
@@ -68,7 +71,7 @@ def extractStrokeSequence(path):
                         1 if j == len(stroke) - 1 else 0))
     return line
 
-def createLabelsDict():
+def createLabelsDict() -> dict[str, str]:
     """
     Returns a dict (str,str) of all lines in the labels file with line number as the key and matching text as the value. 
     """
@@ -92,7 +95,7 @@ def createLabelsDict():
 
 labels = createLabelsDict()
 
-def visualizeStrokes(line, label=None, plott=None, norms=None):
+def visualizeStrokes(line: list[tuple[int, int, int]], label=None, plott=None, norms=None):
     """
     line is a list of 3-long tuples containing the point data for the strokes that make up a line,
     displays a graph showing the different strokes that make up this line.
@@ -193,13 +196,13 @@ def visualizeSample(points, text, pi, mux, muy, sigmax, sigmay, rho, timestep=0,
 
     lower.contourf(xg, yg, density, levels=20, cmap='Blues', alpha=0.4)
     lower.set_xlim(xlim)
-    lower.set_ylim(ylim)   # preserves inversion to match upper
+    lower.set_ylim(ylim)
     lower.set_title(f"Predicted next-point distribution (t={timestep})")
 
     plt.tight_layout()
     plt.show()
 
-def createDataset(split):
+def createDataset(split: str) -> tuple[list[tuple[int, int, int]], list[int]]:
     """
     split is a path to one of the three splits: training, validation, or testing
     returns a tuple of lists (line strokes, label), line strokes are a list of tuples themselves
@@ -232,7 +235,7 @@ def createDataset(split):
                 break
     return datasetPoints, datasetText
 
-def computeDatasetMeanSTD(datasetPoints, normalize=False, normalizeParams=None):
+def computeDatasetMeanSTD(datasetPoints, normalize=False, normalizeParams=None) -> tuple[float, float, float, float]:
     """
     returns a tuple of the (meanX, meanY, stdX, stdY) of the given dataset POINTS LIST ONLY
     if normalize = True, then also normalizes the dataset
@@ -362,4 +365,6 @@ if __name__ == "__main__":
 
     # for f, l in fData.take(1):
     #     visualizeStrokes(f[0].numpy(), label=decodeLine(l[0].numpy()), norms=datasetNorms)
-    print("Hello World!")
+    # print("Hello World!")
+    for l, t in fData.take(1):
+        visualizeStrokes(l[1].numpy(), label=decodeLine(t[1].numpy()), norms=datasetNorms)
