@@ -3,6 +3,7 @@ Checkpoints/
 Processed/
 Graphs/
 __pycache__/
+.vscode/
 *.pyc
 *.pth
 *.npy
