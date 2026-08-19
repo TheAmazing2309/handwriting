@@ -4,6 +4,7 @@ Processed/
 Graphs/
 __pycache__/
 .vscode/
+venv/
 *.pyc
 *.pth
 *.npy

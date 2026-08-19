@@ -5,10 +5,10 @@ import tensorflow as tf
 model = HandwritingSynthesisModel()
 print("model init")
 for points, text in fData.take(1):
-    pi, mux, muy, sigmax, sigmay, rho, penup = model((points, text))
+    pi, mux, muy, sigmax, sigmay, rho, penup, mask = model((points, text))
 
 print("first dummy sample run")
-model.load_weights("Checkpoints/epoch_0batch_25.weights.h5")
+model.load_weights("Checkpoints/epoch_67batch_500.weights.h5")
 print("model loaded")
 
 for points, text in fData.take(1):
