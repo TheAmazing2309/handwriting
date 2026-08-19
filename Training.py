@@ -1,10 +1,10 @@
-from Preprocessing import (tData, vData, fData, datasetNorms, 
+from Preprocessing import (tData, vData, fData, datasetNorms,
                            POINT_PAD_TOKEN, TEXT_PAD_TOKEN, VOCABSIZE, MAX_POINT_SEQ_LEN, MAX_TEXT_SEQ_LEN, CHECKPOINT_PATH,
-                        BATCH_SIZE, GRAPH_PATH, visualizeSample, samplePoint, visualizeStrokes)
+                        BATCH_SIZE, GRAPH_PATH, visualizeSample, samplePoint, visualizeStrokes, encodeLine)
 from Loss import loss
 import tensorflow as tf
 import matplotlib
-matplotlib.use("Agg")  # headless: plots are only ever saved to disk, never shown interactively
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import time
@@ -79,16 +79,45 @@ class HandwritingSynthesisModel(tf.keras.Model):
         self.windowDense = tf.keras.layers.Dense(3 * WINDOW_NUM)
         self.mdn = tf.keras.layers.Dense(6 * PREDS_NUM + 1)
 
+    def step(self, point, w0, h0, c0, h1, c1, h2, c2, kappa, textOneHot, textValidMask, u):
+        """
+        One recurrence timestep: advances all three LSTM layers and the attention window
+        given the current (dx, dy, penup) input point. Shared by call() (teacher-forced,
+        whole known sequences, batched) and generateHandwriting() (autoregressive, one
+        sample at a time, no ground-truth points available) so the two don't drift apart.
+        Returns the pre-MDN hidden concat -- mdnParams() turns that into distribution params.
+        """
+        pointWindow = clip_gradient(tf.concat([point, w0], 1), 10.0)
+        _, (h0, c0) = self.lstm0(pointWindow, [h0, c0])
+        alphaHat, betaHat, kappaHat = tf.split(self.windowDense(h0), 3, axis=1)
+        kappa = kappa + tf.exp(kappaHat)
+        alpha = tf.exp(alphaHat)
+        beta = tf.exp(betaHat)
+        phi = tf.reshape(tf.reduce_sum(tf.exp(-tf.reshape(beta, (-1,WINDOW_NUM,1)) * (tf.reshape(kappa, (-1,WINDOW_NUM,1)) - u) ** 2) * tf.reshape(alpha, (-1,WINDOW_NUM,1)), axis=1), (-1,MAX_TEXT_SEQ_LEN,1))
+        phi = phi * tf.expand_dims(textValidMask, -1)
+        w0 = tf.reduce_sum(phi * textOneHot, axis=1)
+        lstm1Input = clip_gradient(tf.concat([point, w0, h0], axis=1), 10.0)
+        _, (h1, c1) = self.lstm1(lstm1Input, [h1, c1])
+        lstm2Input = clip_gradient(tf.concat([point, w0, h1], axis=1), 10.0)
+        _, (h2, c2) = self.lstm2(lstm2Input, [h2, c2])
+        hidden = tf.concat([h0, h1, h2], axis=1)
+        return hidden, w0, h0, c0, h1, c1, h2, c2, kappa, phi
+
+    def mdnParams(self, hidden):
+        final = self.mdn(hidden)
+        final = clip_gradient(final, 100.0)
+        pi, mux, muy, sigmax, sigmay, rho, penup = tf.split(final, [20,20,20,20,20,20,1], axis=-1)
+        return tf.nn.softmax(pi), mux, muy, tf.exp(sigmax), tf.exp(sigmay), tf.nn.tanh(rho), 1.0 / (1.0 + tf.exp(penup))
+
     def call(self, inputs, training=False):
         pointsInput, textInput = inputs
         batchSize = tf.shape(pointsInput)[0]
         seqLen = tf.shape(pointsInput)[1]
 
-        # true (non-[PAD]) character positions, so the window never attends to padding
         textValidMask = tf.cast(tf.not_equal(textInput, TEXT_PAD_TOKEN), tf.float32)
-        textInput = tf.one_hot(textInput, VOCABSIZE)
+        textOneHot = tf.one_hot(textInput, VOCABSIZE)
         pointsInput = self.pointsMask(pointsInput)
-        textInput = self.textMask(textInput)
+        textOneHot = self.textMask(textOneHot)
 
         w0Init = tf.zeros((batchSize, VOCABSIZE))
         zerosH = tf.zeros((batchSize, HIDDEN_SIZE))
@@ -96,29 +125,14 @@ class HandwritingSynthesisModel(tf.keras.Model):
         u = tf.reshape(tf.range(MAX_TEXT_SEQ_LEN, dtype=tf.float32), (1,1,-1))
         outputsInit = tf.TensorArray(dtype=tf.float32, size=seqLen, element_shape=(None, 3 * HIDDEN_SIZE))
 
-        # Explicit tf.while_loop (rather than a Python for-loop over tf.range) so this dynamic-length
-        # recurrence traces once regardless of AutoGraph's handling of Keras Model.call() internals --
-        # AutoGraph does not reliably convert plain Python for-loops written inside call().
         def cond(t, *_):
             return t < seqLen
 
         def body(t, w0, h0, c0, h1, c1, h2, c2, kappa, outputs):
-            point = pointsInput[:, t, :] #shape(batch, 3)
-            pointWindow = clip_gradient(tf.concat([point, w0], 1), 10.0) #shape(batch,VOCABSIZE+3)
-            _, (h0, c0) = self.lstm0(pointWindow, [h0, c0]) #[hidden,cell]
-            alphaHat, betaHat, kappaHat = tf.split(self.windowDense(h0), 3, axis=1)
-            kappa = kappa + tf.exp(kappaHat)
-            alpha = tf.exp(alphaHat)
-            beta = tf.exp(betaHat)
-            phi = tf.reshape(tf.reduce_sum(tf.exp(-tf.reshape(beta, (batchSize,WINDOW_NUM,1)) * (tf.reshape(kappa, (batchSize,WINDOW_NUM,1)) - u) ** 2) * tf.reshape(alpha, (batchSize,WINDOW_NUM,1)), axis=1), (batchSize,-1,1))
-            phi = phi * tf.expand_dims(textValidMask, -1) # never attend to [PAD] characters
-            w0 = tf.reduce_sum(phi * textInput, axis=1)
-            lstm1Input = clip_gradient(tf.concat([point, w0, h0], axis=1), 10.0)
-            _, (h1, c1) = self.lstm1(lstm1Input, [h1, c1])
-            lstm2Input = clip_gradient(tf.concat([point, w0, h1], axis=1), 10.0)
-            _, (h2, c2) = self.lstm2(lstm2Input, [h2, c2])
-            # Eq. 17: the output layer sees a skip connection from every hidden layer
-            outputs = outputs.write(t, tf.concat([h0, h1, h2], axis=1))
+            point = pointsInput[:, t, :]
+            hidden, w0, h0, c0, h1, c1, h2, c2, kappa, _phi = self.step(
+                point, w0, h0, c0, h1, c1, h2, c2, kappa, textOneHot, textValidMask, u)
+            outputs = outputs.write(t, hidden)
             return t + 1, w0, h0, c0, h1, c1, h2, c2, kappa, outputs
 
         *_, outputs = tf.while_loop(
@@ -127,21 +141,12 @@ class HandwritingSynthesisModel(tf.keras.Model):
         )
 
         final = tf.transpose(outputs.stack(), [1, 0, 2])
-        final = self.mdn(final)
-        final = clip_gradient(final, 100.0)
-        pi, mux, muy, sigmax, sigmay, rho, penup = tf.split(final, [20,20,20,20,20,20,1], axis=2)
-
-        # Eq. 18: e_t = 1 / (1 + exp(e_hat_t)), i.e. sigmoid(-e_hat_t)
-        return tf.nn.softmax(pi), mux, muy, tf.exp(sigmax), tf.exp(sigmay), tf.nn.tanh(rho), 1.0 / (1.0 + tf.exp(penup)), pointsInput._keras_mask
+        pi, mux, muy, sigmax, sigmay, rho, penup = self.mdnParams(final)
+        return pi, mux, muy, sigmax, sigmay, rho, penup, pointsInput._keras_mask
 
 def makeTrainStep(model, optimizer):
     @tf.function
     def trainStep(points, text):
-        # batches are padded to the dataset-wide max length (MAX_POINT_SEQ_LEN), but most
-        # sequences are far shorter -- trimming to this batch's own real max length keeps
-        # the recurrence from unrolling over pure padding. This slice is data-dependent
-        # (not shape-dependent), so it lives inside the traced graph without forcing a
-        # retrace: the input signature stays (BATCH_SIZE, MAX_POINT_SEQ_LEN, 3) every call.
         validMask = tf.reduce_any(tf.not_equal(points, POINT_PAD_TOKEN[0]), axis=-1)
         realLen = tf.maximum(tf.reduce_max(tf.reduce_sum(tf.cast(validMask, tf.int32), axis=1)), 1)
         points = points[:, :realLen, :]
@@ -154,7 +159,7 @@ def makeTrainStep(model, optimizer):
     return trainStep
 
 
-VAL_CHECK_BATCHES = 3  # not the whole validation set -- just enough for a quick generalization check
+VAL_CHECK_BATCHES = 3
 
 def makeEvalStep(model):
     @tf.function
@@ -183,8 +188,6 @@ def runTrainingLoop(model, optimizer, epochStart=1, batchStart=1):
             rawPoints, text = batch
             lossNum, a, b, c, d, e, f, g, points = trainStep(rawPoints, text)
 
-            # sampling + plotting is only for visual debugging, not training itself --
-            # only pay for it (and the disk write) every 100 batches, not every batch
             if i%100 == 0:
                 modelPointPreds = []
                 for j in range(BATCH_SIZE):
@@ -211,7 +214,6 @@ def runTrainingLoop(model, optimizer, epochStart=1, batchStart=1):
 
 
 def trainFromScratch():
-    # Eqs. 38-45: rho=0.95 (n), momentum=0.9, lr=0.0001, epsilon=0.0001, centered -> uses (n - g^2)
     optimizer = tf.keras.optimizers.RMSprop(learning_rate=1e-4, rho=0.95, momentum=0.9, epsilon=1e-4, centered=True)
     model = HandwritingSynthesisModel()
     print("Model Initialized")
@@ -221,16 +223,12 @@ def trainFromScratch():
 def trainFromCheckpoint(weightsPath):
     optimizer = tf.keras.optimizers.RMSprop(learning_rate=1e-4, rho=0.95, momentum=0.9, epsilon=1e-4, centered=True)
     model = HandwritingSynthesisModel()
-    # layer shapes are only known after a real forward pass, so build the model
-    # before load_weights can restore into it (same pattern as Testing.py)
     for points, text in tData.take(1):
         model((points, text))
     model.load_weights(weightsPath)
     epoch = int(weightsPath.split("_")[1].split("b")[0])
     batch = int(weightsPath.split("_")[-1].split(".")[0])
     print(f"Model Initialized, loaded weights from {weightsPath}")
-    # restarting at the beginning of the data, even if the checkpoint was saved
-    # partway through an epoch -- optimizer state (RMSprop accumulators) is fresh
     runTrainingLoop(model, optimizer, epochStart=epoch, batchStart=batch)
 
 
@@ -242,6 +240,47 @@ def latestCheckpoint():
         if m:
             ckpts.append((int(m.group(1)), int(m.group(2)), path))
     return max(ckpts)[2]
+
+
+def generateHandwriting(model, text, maxSteps=700):
+    """
+    Autoregressively synthesizes a stroke sequence for arbitrary text that was never in the
+    dataset -- there's no ground-truth stroke sequence to teacher-force on, so each step
+    samples a point from the MDN and feeds it back in as the next input, unlike call() which
+    is fed real points throughout. Returns a list of (dx, dy, penup) tuples in the same format
+    visualizeStrokes already consumes.
+    Stops once the attention window has swept past the last real character (Graves 2013,
+    Sec. 5.3: stop the first time phi(t, U) > phi(t, u) for all u < U), or after maxSteps as
+    a safety cap. kappa only ever increases, so this can't trigger prematurely.
+    """
+    encoded = encodeLine(text)
+    realLen = len(encoded)
+    encoded = encoded[:MAX_TEXT_SEQ_LEN] + [TEXT_PAD_TOKEN] * max(0, MAX_TEXT_SEQ_LEN - len(encoded))
+    textInput = tf.constant([encoded], dtype=tf.int32)
+    textValidMask = tf.cast(tf.not_equal(textInput, TEXT_PAD_TOKEN), tf.float32)
+    textOneHot = tf.one_hot(textInput, VOCABSIZE)
+    u = tf.reshape(tf.range(MAX_TEXT_SEQ_LEN, dtype=tf.float32), (1, 1, -1))
+
+    point = tf.zeros((1, 3))
+    w0 = tf.zeros((1, VOCABSIZE))
+    h0 = c0 = h1 = c1 = h2 = c2 = tf.zeros((1, HIDDEN_SIZE))
+    kappa = tf.zeros((1, WINDOW_NUM))
+
+    points = []
+    for _ in range(maxSteps):
+        hidden, w0, h0, c0, h1, c1, h2, c2, kappa, phi = model.step(
+            point, w0, h0, c0, h1, c1, h2, c2, kappa, textOneHot, textValidMask, u)
+        pi, mux, muy, sigmax, sigmay, rho, penup = model.mdnParams(hidden)
+        dx, dy, penState = samplePoint(
+            tf.expand_dims(pi, 1), tf.expand_dims(mux, 1), tf.expand_dims(muy, 1),
+            tf.expand_dims(sigmax, 1), tf.expand_dims(sigmay, 1), tf.expand_dims(rho, 1),
+            tf.expand_dims(penup, 1), timestep=0, sample=0)
+        points.append((dx, dy, penState))
+        point = tf.constant([[dx, dy, float(penState)]], dtype=tf.float32)
+
+        if int(tf.argmax(phi[0, :, 0])) >= realLen - 1:
+            break
+    return points
 
 
 if __name__ == "__main__":

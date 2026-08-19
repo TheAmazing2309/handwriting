@@ -6,7 +6,6 @@ def loss(pi, mux, muy, sigmax, sigmay, rho, penup, target, mask) -> float:
     """
     Negative log-likelihood loss for the Mixture Density Network 
     """
-    # shift: output[t] predicts target[t+1]
     pi     = pi[:, :-1, :]
     mux    = mux[:, :-1, :]
     muy    = muy[:, :-1, :]
@@ -31,7 +30,6 @@ def loss(pi, mux, muy, sigmax, sigmay, rho, penup, target, mask) -> float:
     penloss = -(accpenUp*tf.math.log(penup+epsilon)+(1-accpenUp)*tf.math.log(1-penup+epsilon))
 
     mask = tf.cast(mask, tf.float32)
-    # Eq. 6 / 26: L(x) is a sum over the sequence; average only across the batch.
     perStepLoss = mask * (-P + penloss)
     perSequenceLoss = tf.reduce_sum(perStepLoss, axis=1)
     return tf.reduce_mean(perSequenceLoss)

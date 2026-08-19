@@ -8,3 +8,5 @@ venv/
 *.pyc
 *.pth
 *.npy
+*.log
+BatchMetrics.txt
