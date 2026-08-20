@@ -1,6 +1,14 @@
-# WIP
+# Handwriting Synthesis
+
 ## About
-This project trains a model that could generate human-like handwriting given an input text.
+A from-scratch TensorFlow implementation of the handwriting synthesis network from:
+
+> Alex Graves, "Generating Sequences With Recurrent Neural Networks" (2013). [arXiv:1308.0850](https://arxiv.org/abs/1308.0850)
+
+Given a text string, the model generates a plausible pen-stroke sequence for handwriting
+it out, using a stack of 3 LSTM layers with peephole connections, a Gaussian-window soft
+attention mechanism over the input text, and a mixture density network (20-component
+bivariate Gaussian mixture + Bernoulli pen-lift) output layer.
 
 ## Dataset
 This project uses the IAM On-Line Handwriting Database (IAM-OnDB), which must be downloaded separatley after registering on the FKI website.
@@ -44,3 +52,18 @@ Training progress, epoch 0 to 67 (sampled every epoch at batch 100):
 Validation loss over training, with a linear trend line:
 
 ![Validation loss](assets/validation_loss.png)
+
+## Implementation notes
+The recurrent core (3 peephole LSTMs + attention window) originally ran fully eager and
+padded every batch out to the dataset's longest sequence (1940 timesteps) regardless of a
+given batch's actual content length -- 70-220+ seconds per batch. It's now a single
+`tf.while_loop` compiled under `@tf.function`, with each batch dynamically trimmed to its
+own real length inside the traced graph (so the trim itself doesn't force a retrace). That
+took it down to 2-5 seconds per batch, a 30-80x speedup, which is what actually made
+training past epoch 20 practical on CPU.
+
+The model's equations (peephole LSTM gates, the soft attention window, the mixture density
+loss, gradient clipping ranges, the RMSprop variant) were checked line by line against the
+paper. One deliberate deviation: the paper's best-reported results use a second-stage
+"adaptive weight noise" fine-tune, which isn't implemented here -- what's here is the base
+model the paper itself trains before that refinement step.
