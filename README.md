@@ -10,6 +10,25 @@ it out, using a stack of 3 LSTM layers with peephole connections, a Gaussian-win
 attention mechanism over the input text, and a mixture density network (20-component
 bivariate Gaussian mixture + Bernoulli pen-lift) output layer.
 
+## File structure
+```
+Training.py                 Model, training loop, generation
+Preprocessing.py            Dataset loading and encoding
+Loss.py                     Mixture density loss function
+Testing.py                  CLI: generate handwriting from text
+Analysis.py                 
+requirements.txt            
+Assets/
+  MakeProgressGif.py        Builds the training-progress GIF
+  PlotValidationLoss.py     Builds the validation-loss chart
+  training_progress.gif     
+  validation_loss.png       
+ValidationMetrics.txt       Logged validation loss per checkpoint
+Dataset/                    IAM-OnDB data 
+Checkpoints/                Saved model weights (generated)
+Graphs/                     Per-checkpoint sample plots (generated)
+```
+
 ## Dataset
 This project uses the IAM On-Line Handwriting Database (IAM-OnDB), which must be downloaded separately after registering on the FKI website:
 
