@@ -8,8 +8,7 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import time
-import glob
-import re
+from pathlib import Path
 
 WINDOW_NUM = 10
 HIDDEN_SIZE = 400
@@ -232,14 +231,11 @@ def trainFromCheckpoint(weightsPath):
     runTrainingLoop(model, optimizer, epochStart=epoch, batchStart=batch)
 
 
-def latestCheckpoint():
-    ckptRe = re.compile(r"epoch_(\d+)batch_(\d+)\.weights\.h5$")
-    ckpts = []
-    for path in glob.glob(f"{CHECKPOINT_PATH}/*.weights.h5"):
-        m = ckptRe.search(path)
-        if m:
-            ckpts.append((int(m.group(1)), int(m.group(2)), path))
-    return max(ckpts)[2]
+def latestCheckpoint(path=f"{CHECKPOINT_PATH}/"):
+    pathObj = Path(path)
+    files = [f.name for f in pathObj.iterdir() if f.is_file()]
+    files.sort(key=lambda name: int(name.split("_")[1].split("b")[0])*10**6+int(name.split("_")[2].split(".")[0]))
+    return path+files[-1]
 
 
 def generateHandwriting(model, text, maxSteps=700):

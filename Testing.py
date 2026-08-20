@@ -1,19 +1,12 @@
-from Training import HandwritingSynthesisModel, generateHandwriting
+from Training import HandwritingSynthesisModel, generateHandwriting, latestCheckpoint
 from Preprocessing import fData, visualizeSample, visualizeStrokes, datasetNorms, charToIndex, MAX_TEXT_SEQ_LEN
 import tensorflow as tf
 import matplotlib.pyplot as plt
-from pathlib import Path
 import argparse
 
 parser = argparse.ArgumentParser(description="Generate handwriting for text using the latest trained checkpoint")
 parser.add_argument("text", nargs="?", default=None, help="Text to generate handwriting for")
 args = parser.parse_args()
-
-def identifyLatestCheckpoint(path="Checkpoints/"):
-    pathObj = Path(path)
-    files = [f.name for f in pathObj.iterdir() if f.is_file()]
-    files.sort(key=lambda name: int(name.split("_")[1].split("b")[0])*10**6+int(name.split("_")[2].split(".")[0]))
-    return path+files[-1]
 
 model = HandwritingSynthesisModel()
 print("model init")
@@ -21,7 +14,7 @@ for points, text in fData.take(1):
     pi, mux, muy, sigmax, sigmay, rho, penup, mask = model((points, text))
 
 print("first dummy sample run")
-model.load_weights(identifyLatestCheckpoint())
+model.load_weights(latestCheckpoint())
 print("model loaded")
 
 for points, text in fData.take(1):
@@ -44,6 +37,3 @@ else:
     outPath = f"Graphs/Generated_{text[:30].replace(' ', '_')}.png"
     plt.savefig(outPath)
     print(f"Saved to {outPath}")
-
-if __name__ == "__main__":
-    identifyLatestCheckpoint()

@@ -11,9 +11,9 @@ attention mechanism over the input text, and a mixture density network (20-compo
 bivariate Gaussian mixture + Bernoulli pen-lift) output layer.
 
 ## Dataset
-This project uses the IAM On-Line Handwriting Database (IAM-OnDB), which must be downloaded separatley after registering on the FKI website.
+This project uses the IAM On-Line Handwriting Database (IAM-OnDB), which must be downloaded separately after registering on the FKI website:
 
-Liwicki, M. and Bunke, H.: IAM-OnDB - an On-Line English Sentence Database Acquired from Handwritten Text on a Whiteboard. 8th Intl. Conf. on Document Analysis and Recognition, 2005, Volume 2, pp. 956 - 961
+> M. Liwicki and H. Bunke, "IAM-OnDB - an On-Line English Sentence Database Acquired from Handwritten Text on a Whiteboard." 8th Intl. Conf. on Document Analysis and Recognition (2005), Volume 2, pp. 956-961.
 
 The database must be placed in a folder called Dataset, and the stroke sequences in Dataset/Strokes/lineStrokes
 
@@ -47,11 +47,11 @@ python Testing.py "text to write"
 ## Results
 Training progress, epoch 0 to 67 (sampled every epoch at batch 100):
 
-![Training progress](assets/training_progress.gif)
+![Training progress](Assets/training_progress.gif)
 
 Validation loss over training, with a linear trend line:
 
-![Validation loss](assets/validation_loss.png)
+![Validation loss](Assets/validation_loss.png)
 
 ## Implementation notes
 The recurrent core (3 peephole LSTMs + attention window) originally ran fully eager and
